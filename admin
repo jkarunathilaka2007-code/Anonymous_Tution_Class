@@ -1,0 +1,154 @@
+<?php
+session_start();
+
+if(!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin_register'){
+    header("Location: login.php");
+    exit();
+}
+
+// Hardcoded admin info
+$admin_id = $_SESSION['user_id']; // 0 for super admin
+$admin = [
+    'admin_id' => $admin_id,
+    'name' => $_SESSION['name'],
+    'contact_number' => 'N/A',
+    'address' => 'N/A',
+    'profile_picture' => 'profiles/default.png'
+];
+
+$upload_message = "";
+
+// Handle profile picture upload
+if(isset($_FILES['profile_picture']) && $_FILES['profile_picture']['name'] != ""){
+    $target_dir = "profiles/";
+    if(!is_dir($target_dir)){ mkdir($target_dir, 0755, true); }
+
+    $file_name = basename($_FILES["profile_picture"]["name"]);
+    $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+    $allowed_ext = ['jpg','jpeg','png','gif'];
+
+    if(!in_array($file_ext, $allowed_ext)){
+        $upload_message = "Only JPG, JPEG, PNG, GIF files allowed.";
+    } else {
+        $target_file = $target_dir . $admin_id . "_" . time() . "." . $file_ext;
+        $check = getimagesize($_FILES["profile_picture"]["tmp_name"]);
+
+        if($check !== false){
+            if(move_uploaded_file($_FILES["profile_picture"]["tmp_name"], $target_file)){
+                $admin['profile_picture'] = $target_file;
+                $upload_message = "Profile picture updated successfully!";
+            } else { $upload_message = "Error uploading file."; }
+        } else { $upload_message = "Uploaded file is not an image."; }
+    }
+}
+
+$profile_pic = !empty($admin['profile_picture']) && file_exists($admin['profile_picture']) ? $admin['profile_picture'] : "profiles/default.png";
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+body { margin:0; font-family:'Roboto',sans-serif; background:#0e1326; color:#e0e6f1; }
+a { text-decoration:none; }
+.container { display:flex; min-height:100vh; }
+
+/* Sidebar */
+.sidebar { width:260px; background:#12183b; display:flex; flex-direction:column; padding:30px 15px; box-shadow:2px 0 10px rgba(0,0,0,0.5);}
+.sidebar h3 { text-align:center; color:#00d4ff; margin-bottom:20px; font-weight:700; letter-spacing:1px; }
+.sidebar .button { display:flex; align-items:center; justify-content:flex-start; width:100%; padding:12px; margin-bottom:12px; color:#00d4ff; border-radius:8px; font-weight:500; font-size:15px; background:transparent; border:none; cursor:pointer; transition:0.3s;}
+.sidebar .button i { margin-right:12px; font-size:16px;}
+.sidebar .button:hover { box-shadow:0 0 12px #00d4ff inset,0 0 12px #00d4ff; background:#00d4ff10; }
+
+/* Content */
+.content { flex:1; padding:40px; background:#141b3b; overflow-y:auto; }
+.content h2 { color:#00d4ff; margin-bottom:20px; letter-spacing:1px; }
+
+/* Profile Card */
+.profile-card { display:flex; flex-wrap:wrap; background:#1e274e; border-radius:15px; padding:30px; box-shadow:0 0 20px rgba(0,212,255,0.2); align-items:center; margin-bottom:30px; }
+.profile-left { flex:0 0 180px; margin-right:40px; text-align:center; }
+.profile-left img { width:160px; height:160px; border-radius:50%; object-fit:cover; border:4px solid #00d4ff; box-shadow:0 0 20px #00d4ff; cursor:pointer; transition:0.3s; }
+.profile-left img:hover { transform:scale(1.05); box-shadow:0 0 40px #00d4ff; }
+input[type=file] { display:none; }
+
+.profile-right { flex:1; min-width:250px; }
+.profile-right .admin-name { font-size:28px; font-weight:700; color:#00d4ff; margin-bottom:20px; text-shadow:0 0 10px #00d4ff; }
+.profile-right .info-row { display:flex; align-items:center; margin-bottom:12px; padding:10px 15px; background:#252f5b; border-radius:8px; box-shadow:0 0 10px #0005 inset; transition:0.2s;}
+.profile-right .info-row i { color:#00d4ff; margin-right:15px; font-size:18px;}
+.profile-right .info-row span { font-weight:500; font-size:16px;}
+.profile-right .info-row:hover { background:#2c3970; box-shadow:0 0 15px #00d4ff20; }
+
+/* Messages */
+.message { margin:15px 0; padding:12px; border-radius:8px; font-weight:bold; text-align:center; }
+.success { background-color:#0ff3a0; color:#003300; }
+.error { background-color:#ff4d4d; color:#330000; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <h3>Admin Menu</h3>
+
+        <!-- Profile / Logout -->
+        <a href="?page=profile" class="button"><i class="fa fa-user"></i> Profile</a>
+        <a href="logout.php" class="button"><i class="fa fa-sign-out-alt"></i> Logout</a>
+
+        <hr style="border-color:#00d4ff20; margin:10px 0;">
+
+        <!-- Admin Actions -->
+        <a href="register.php" class="button"><i class="fa fa-user-plus"></i> Registration</a>
+        <a href="attendance.php" class="button"><i class="fa fa-calendar-check"></i> Mark Attendance</a>
+        <a href="classfees.php" class="button"><i class="fa fa-money-bill-wave"></i> Mark Class Fees</a>
+        <a href="teacherfee.php" class="button"><i class="fa fa-chalkboard-teacher"></i> Mark Teacher Fee</a>
+        <a href="employerfee.php" class="button"><i class="fa fa-briefcase"></i> Mark Employer Fee</a>
+        <a href="addannouncement.php" class="button"><i class="fa fa-bullhorn"></i> Add Announcement</a>
+        <a href="addmemories.php" class="button"><i class="fa fa-image"></i> Add Memories</a>
+        <a href="addstories.php" class="button"><i class="fa fa-video"></i> Add Story</a>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+        <?php if(isset($_GET['page']) && $_GET['page']=='profile'): ?>
+            <h2>My Profile</h2>
+
+            <?php if($upload_message): ?>
+                <div class="message <?php echo strpos($upload_message,'successfully')!==false?'success':'error'; ?>">
+                    <?php echo $upload_message; ?>
+                </div>
+            <?php endif; ?>
+
+            <div class="profile-card">
+                <!-- Profile Picture -->
+                <div class="profile-left">
+                    <form method="POST" enctype="multipart/form-data">
+                        <label for="profile_picture">
+                            <img src="<?php echo $profile_pic; ?>" title="Click to change picture">
+                        </label>
+                        <input type="file" name="profile_picture" id="profile_picture" onchange="this.form.submit()">
+                    </form>
+                </div>
+
+                <!-- Profile Info -->
+                <div class="profile-right">
+                    <div class="admin-name"><?php echo $admin['name']; ?></div>
+                    <div class="info-row"><i class="fa fa-id-badge"></i> <span>Admin ID: <?php echo $admin['admin_id']; ?></span></div>
+                    <div class="info-row"><i class="fa fa-phone"></i> <span>Contact: <?php echo $admin['contact_number']; ?></span></div>
+                    <div class="info-row"><i class="fa fa-map-marker-alt"></i> <span>Address: <?php echo $admin['address']; ?></span></div>
+                </div>
+            </div>
+
+        <?php else: ?>
+            <h2>Welcome, <?php echo $admin['name']; ?>!</h2>
+            <p>Use the menu on the left to manage registrations, fees, attendance, announcements, memories, and stories.</p>
+        <?php endif; ?>
+    </div>
+</div>
+
+</body>
+</html>

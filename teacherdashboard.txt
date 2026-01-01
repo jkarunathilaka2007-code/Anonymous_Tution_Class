@@ -1,0 +1,258 @@
+<?php
+session_start();
+if(!isset($_SESSION['teacher'])){
+    header("Location: login.php");
+    exit();
+}
+
+include 'db_connect.php';
+$teacher = $_SESSION['teacher'];
+$teacher_id = $teacher['teacher_id'];
+
+// Fetch latest teacher info
+$stmt = $conn->prepare("SELECT * FROM teacher_register WHERE teacher_id = ?");
+$stmt->bind_param("i", $teacher_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$teacher = $result->fetch_assoc();
+
+// Handle profile picture upload
+$upload_message = "";
+if(isset($_FILES['profile_picture']) && $_FILES['profile_picture']['name'] != ""){
+    $target_dir = "profiles/";
+    if(!is_dir($target_dir)) mkdir($target_dir, 0755, true);
+
+    $file_name = basename($_FILES["profile_picture"]["name"]);
+    $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+    $allowed_ext = ['jpg','jpeg','png','gif'];
+
+    if(!in_array($file_ext, $allowed_ext)){
+        $upload_message = "Only JPG, JPEG, PNG, GIF files allowed.";
+    } else {
+        $target_file = $target_dir . $teacher_id . "_" . time() . "." . $file_ext;
+        if(getimagesize($_FILES["profile_picture"]["tmp_name"]) !== false){
+            if(move_uploaded_file($_FILES["profile_picture"]["tmp_name"], $target_file)){
+                $stmt = $conn->prepare("UPDATE teacher_register SET profile_picture = ? WHERE teacher_id = ?");
+                $stmt->bind_param("si", $target_file, $teacher_id);
+                if($stmt->execute()){
+                    $upload_message = "Profile picture updated successfully!";
+                    $teacher['profile_picture'] = $target_file;
+                } else {
+                    $upload_message = "Database update failed!";
+                }
+            } else {
+                $upload_message = "Error uploading file.";
+            }
+        } else {
+            $upload_message = "Uploaded file is not an image.";
+        }
+    }
+}
+
+$profile_pic = !empty($teacher['profile_picture']) && file_exists($teacher['profile_picture']) ? $teacher['profile_picture'] : "profiles/default.png";
+
+// Handle timetable save
+if(isset($_POST['saveTimetable'])){
+    $timetable_name = $_POST['timetableName'] ?? 'My Timetable';
+    $rowData = [];
+    $rowCount = 0;
+
+    while(isset($_POST["time_{$rowCount}_0"])){
+        $rowArr = [];
+        for($d=0; $d<7; $d++){
+            $time = $_POST["time_{$rowCount}_{$d}"] ?? '';
+            $sub = $_POST["subject_{$rowCount}_{$d}"] ?? '';
+            $rowArr[] = ['time'=>$time,'subject'=>$sub];
+        }
+        $rowData[] = $rowArr;
+        $rowCount++;
+    }
+
+    $jsonData = json_encode($rowData);
+    $stmt = $conn->prepare("INSERT INTO timetable (teacher_id, timetable_name, timetable) VALUES (?, ?, ?)");
+    $stmt->bind_param("iss", $teacher['teacher_id'], $timetable_name, $jsonData);
+    if($stmt->execute()){
+        $timetable_message = "Timetable saved successfully!";
+    } else {
+        $timetable_message = "Error saving timetable!";
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Teacher Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root {
+    --primary: #00d4ff;
+    --bg-gradient: linear-gradient(135deg,#0e1326,#1b1b2f);
+    --text: #f1f1f1;
+    --card-bg: rgba(255,255,255,0.05);
+    --shadow: rgba(0,212,255,0.2);
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Poppins',sans-serif;}
+body{min-height:100vh;background: var(--bg-gradient);color: var(--text);overflow-x:hidden;position:relative;}
+.shape{position:absolute;border-radius:50%;opacity:0.2;animation: float 10s infinite ease-in-out alternate;z-index:0;}
+.shape1{width:150px;height:150px;background:#00d4ff;top:10%;left:5%;animation-duration:12s;}
+.shape2{width:200px;height:200px;background:#ff00d4;top:60%;left:80%;animation-duration:15s;}
+.shape3{width:100px;height:100px;background:#00ffa0;top:40%;left:40%;animation-duration:18s;}
+@keyframes float{0%{transform:translateY(0) rotate(0deg);}50%{transform:translateY(-30px) rotate(180deg);}100%{transform:translateY(0) rotate(360deg);}}
+
+.container{display:flex;min-height:100vh;position:relative;z-index:1;}
+.sidebar{width:220px;background: rgba(0,0,0,0.6);padding:25px 15px;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,0.1);backdrop-filter: blur(10px);}
+.sidebar h2{color: var(--primary);text-align:center;margin-bottom:30px;}
+.sidebar a{color: var(--text);padding:12px 15px;margin-bottom:12px;border-radius:10px;display:flex;align-items:center;gap:10px;font-weight:500;transition:0.3s;}
+.sidebar a:hover{background: var(--primary);color:#000;transform:scale(1.05);}
+.content{flex:1;padding:30px;overflow-y:auto;}
+.profile-card{display:flex;flex-wrap:wrap;background: var(--card-bg);border-radius:20px;padding:30px;box-shadow:0 0 40px var(--shadow);align-items:center;backdrop-filter: blur(15px);}
+.profile-left{flex:0 0 180px;margin-right:40px;text-align:center;position:relative;}
+.profile-left img{width:160px;height:160px;border-radius:50%;object-fit:cover;border:4px solid var(--primary);box-shadow:0 0 30px var(--primary);cursor:pointer;transition:0.3s;}
+.profile-left img:hover{transform:scale(1.05);box-shadow:0 0 60px var(--primary);}
+input[type=file]{display:none;}
+.profile-right{flex:1;min-width:250px;}
+.profile-right .info-row{display:flex;align-items:center;margin-bottom:12px;padding:12px 20px;background: rgba(255,255,255,0.05);border-radius:12px;box-shadow: inset 0 0 10px rgba(0,0,0,0.2);transition:0.3s;}
+.profile-right .info-row i{color: var(--primary);margin-right:15px;font-size:18px;}
+.profile-right .info-row span{font-weight:500;font-size:16px;}
+.profile-right .info-row:hover{background: rgba(0,212,255,0.1);transform:scale(1.02);}
+.message{margin:15px 0;padding:12px;border-radius:10px;font-weight:bold;text-align:center;}
+.success{background-color:#0ff3a0;color:#003300;}
+.error{background-color:#ff4d4d;color:#330000;}
+table{border-collapse:collapse;width:100%;margin-top:10px;color:#000;background:#fff;}
+table th, table td{border:1px solid #000;padding:8px;text-align:center;}
+table th{background: #00d4ff;color:#000;}
+</style>
+</head>
+<body>
+<div class="shape shape1"></div>
+<div class="shape shape2"></div>
+<div class="shape shape3"></div>
+
+<div class="container">
+    <div class="sidebar">
+        <h2>Teacher Menu</h2>
+        <a href="?page=profile"><i class="fa fa-user"></i> Profile</a>
+        <a href="?page=add_timetable"><i class="fa fa-calendar"></i> Add Timetable</a>
+        <a href="logout.php"><i class="fa fa-sign-out-alt"></i> Logout</a>
+    </div>
+
+    <div class="content">
+        <?php if(isset($_GET['page']) && $_GET['page']=='profile'): ?>
+            <h1>My Profile</h1>
+            <?php if($upload_message): ?>
+                <div class="message <?php echo strpos($upload_message,'successfully')!==false?'success':'error'; ?>">
+                    <?php echo $upload_message; ?>
+                </div>
+            <?php endif; ?>
+            <div class="profile-card">
+                <div class="profile-left">
+                    <form method="POST" enctype="multipart/form-data">
+                        <label for="profile_picture">
+                            <img src="<?php echo $profile_pic; ?>" title="Click to change picture">
+                        </label>
+                        <input type="file" name="profile_picture" id="profile_picture" onchange="this.form.submit()">
+                    </form>
+                </div>
+                <div class="profile-right">
+                    <div class="info-row"><i class="fa fa-id-badge"></i> <span>ID: <?php echo $teacher['teacher_id']; ?></span></div>
+                    <div class="info-row"><i class="fa fa-user"></i> <span>Name: <?php echo $teacher['name']; ?></span></div>
+                    <div class="info-row"><i class="fa fa-id-card"></i> <span>NIC: <?php echo $teacher['nic_number']; ?></span></div>
+                    <div class="info-row"><i class="fa fa-book"></i> <span>Subject: <?php echo $teacher['teach_subject']; ?></span></div>
+                    <div class="info-row"><i class="fa fa-layer-group"></i> <span>Stream: <?php echo $teacher['subject_stream']; ?></span></div>
+                    <div class="info-row"><i class="fa fa-phone"></i> <span>Contact: <?php echo $teacher['contact_number']; ?></span></div>
+                    <div class="info-row"><i class="fa fa-map-marker-alt"></i> <span>Address: <?php echo $teacher['address']; ?></span></div>
+                    <div class="info-row"><i class="fa fa-school"></i> <span>School: <?php echo $teacher['school']; ?></span></div>
+                </div>
+            </div>
+
+        <?php elseif(isset($_GET['page']) && $_GET['page']=='add_timetable'): ?>
+            <h1>Add Timetable</h1>
+            <?php if(!empty($timetable_message)) echo "<div class='message success'>{$timetable_message}</div>"; ?>
+
+            <button id="createTimetableBtn">Create Timetable</button>
+            <div id="timetableFormContainer" style="display:none; margin-top:20px;">
+                <input type="text" id="timetableName" placeholder="Timetable Name" style="padding:8px; width:200px;">
+                <input type="number" id="rowCount" placeholder="Number of Rows" min="1" style="padding:8px; width:150px;">
+                <button id="generateTableBtn">Generate Table</button>
+
+                <form id="timetableForm" method="POST" style="margin-top:20px; display:none;">
+                    <div id="timetableGrid"></div>
+                    <button type="submit" name="saveTimetable" style="margin-top:10px;">Save Timetable</button>
+                </form>
+            </div>
+
+            <h2>My Timetables</h2>
+            <?php
+            $res = $conn->query("SELECT * FROM timetable WHERE teacher_id=".$teacher['teacher_id']." ORDER BY created_at DESC");
+            while($t = $res->fetch_assoc()){
+                $tt = json_decode($t['timetable'], true);
+                echo "<h3>".$t['timetable_name']."</h3>";
+                echo "<table><tr>";
+                foreach(['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] as $day) echo "<th>$day</th>";
+                echo "</tr>";
+                foreach($tt as $row){
+                    echo "<tr>";
+                    foreach($row as $cell){
+                        echo "<td>".$cell['time']."<br>".$cell['subject']."</td>";
+                    }
+                    echo "</tr>";
+                }
+                echo "</table><br>";
+            }
+            ?>
+
+            <script>
+            document.getElementById('createTimetableBtn').addEventListener('click', function(){
+                document.getElementById('timetableFormContainer').style.display = 'block';
+            });
+
+            document.getElementById('generateTableBtn').addEventListener('click', function(){
+                const rowCount = parseInt(document.getElementById('rowCount').value);
+                const container = document.getElementById('timetableGrid');
+                container.innerHTML = '';
+
+                const subjects = <?php
+                    $subj_arr = [];
+                    $tid = $teacher['teacher_id'];
+                    $res = $conn->query("SELECT subject_group FROM teachers_subjects_group WHERE teacher_id = $tid");
+                    while($r = $res->fetch_assoc()) $subj_arr[] = $r['subject_group'];
+                    echo json_encode($subj_arr);
+                ?>;
+
+                const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+                let table = '<table border="1" cellpadding="8" cellspacing="0"><tr>';
+                days.forEach(day => table += `<th>${day}</th>`); 
+                table += '</tr>';
+
+                for(let r=0; r<rowCount; r++){
+                    table += '<tr>';
+                    for(let d=0; d<days.length; d++){
+                        table += `<td>
+                            <input type="text" name="time_${r}_${d}" placeholder="12:00-1:00" style="width:70px; display:block; margin-bottom:4px;">
+                            <select name="subject_${r}_${d}">
+                                <option value="">Select Subject</option>`;
+                        subjects.forEach(sub => table += `<option value="${sub}">${sub}</option>`);
+                        table += `</select>
+                        </td>`;
+                    }
+                    table += '</tr>';
+                }
+
+                table += '</table>';
+                container.innerHTML = table;
+                document.getElementById('timetableForm').style.display = 'block';
+            });
+            </script>
+
+        <?php else: ?>
+            <h1>Welcome, <?php echo $teacher['name']; ?>!</h1>
+            <p>Use the menu to view your profile and add timetables.</p>
+        <?php endif; ?>
+    </div>
+</div>
+</body>
+</html>
